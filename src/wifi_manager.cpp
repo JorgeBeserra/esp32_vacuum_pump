@@ -93,14 +93,12 @@ void WiFiManager::loop()
                 //MDNS.begin wants the name we will register as without the .local on the end. That's added automatically.
                 if (!MDNS.begin(deviceName)) Serial.println("Error setting up MDNS responder!");
                 MDNS.addService("telnet", "tcp", 23);// Add service to MDNS-SD
-                MDNS.addService("ELM327", "tcp", 1000);// Add service to MDNS-SD
                 wifiServer.begin(23); //setup as a telnet server
                 wifiServer.setNoDelay(true);
                 //Serial.println("TCP server started");
                 Serial.println("");
                 Serial.println(" ... ready!");
-                wifiOBDII.begin(1000); //setup for wifi linked ELM327 emulation
-                wifiOBDII.setNoDelay(true);
+
                 //ArduinoOTA.setPort(3232);
                 //ArduinoOTA.setHostname(deviceName);
                 // No authentication by default
@@ -165,29 +163,6 @@ void WiFiManager::loop()
                     if (i >= MAX_CLIENTS) {
                         //no free/disconnected spot so reject
                         wifiServer.available().stop();
-                    }
-                }
-
-                if (wifiOBDII.hasClient())
-                {
-                    for(i = 0; i < MAX_CLIENTS; i++)
-                    {
-                        if (!SysSettings.wifiOBDClients[i] || !SysSettings.wifiOBDClients[i].connected())
-                        {
-                            if (SysSettings.wifiOBDClients[i]) SysSettings.wifiOBDClients[i].stop();
-                            SysSettings.wifiOBDClients[i] = wifiOBDII.available();
-                            if (!SysSettings.wifiOBDClients[i]) Serial.println("Couldn't accept client connection!");
-                            else 
-                            {
-                                Serial.print("New wifi ELM client: ");
-                                Serial.print(i); Serial.print(' ');
-                                Serial.println(SysSettings.wifiOBDClients[i].remoteIP());
-                            }
-                        }
-                    }
-                    if (i >= MAX_CLIENTS) {
-                        //no free/disconnected spot so reject
-                        wifiOBDII.available().stop();
                     }
                 }
 

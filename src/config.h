@@ -33,6 +33,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <WiFi.h>
 #include <Preferences.h>
+#include <PubSubClient.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncTCP.h>
 
 //size to use for buffering writes to USB. On the ESP32 we're actually talking TTL serial to a TTL<->USB chip
 #define SER_BUFF_SIZE       1024
@@ -48,7 +51,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define SER_BUFF_FLUSH_INTERVAL 20000
 
 #define CFG_BUILD_NUM   1
-#define CFG_VERSION "Alpha Feb 17 2025"
+#define CFG_VERSION "Alpha Feb 20 2025"
 #define PREF_NAME   "ESP32_VACUUM_PUMP"
 #define EVTV_NAME   "ESP32_VACUUM_PUMP"
 #define MACC_NAME   "VACPUMP"
@@ -96,41 +99,27 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define TRIG_TRASEIRO 7
 #define ECHO_TRASEIRO 21
 
+// Pino ADC para bateria 18650 (2S)
+#define BATTERY_PIN 36  // GPIO36 (ADC1_0)
+
+// Pinos dos encoders
+#define ENCODER_A1 32  // Roda esquerda Canal A
+#define ENCODER_A2 33  // Roda esquerda Canal B
+#define ENCODER_B1 34  // Roda direita Canal A
+#define ENCODER_B2 35  // Roda direita Canal B
+
 //How many devices to allow to connect to our WiFi telnet port?
 #define MAX_CLIENTS 1
 
-struct FILTER {  //should be 10 bytes
-    uint32_t id;
-    uint32_t mask;
-    boolean extended;
-    boolean enabled;
-} __attribute__((__packed__));
-
-struct CANFDSettings {
-    uint32_t nomSpeed;
-    uint32_t fdSpeed;
-    boolean enabled;
-    boolean listenOnly;
-    boolean fdMode;
-};
-
 struct EEPROMSettings {
-    CANFDSettings canSettings[NUM_BUSES];
-
-    boolean useBinarySerialComm; //use a binary protocol on the serial link or human readable format?
-
     uint8_t logLevel; //Level of logging to output on serial line
     uint8_t systemType; //0 = A0RET, 1 = EVTV ESP32 Board, 2 = Macchine 5-CAN board
-    
-    boolean enableBT; //are we enabling bluetooth too?
-    char btName[32];
-
-    boolean enableLawicel;
-
-    //if we're using WiFi then output to serial is disabled (it's far too slow to keep up)  
     uint8_t wifiMode; //0 = don't use wifi, 1 = connect to an AP, 2 = Create an AP
     char SSID[32];     //null terminated string for the SSID
     char WPA2Key[64]; //Null terminated string for the key. Can be a passphase or the actual key
+    char MQTT_server[32];     //null terminated string for the SSID
+    char MQTT_user[32];     //null terminated string for the SSID
+    char MQTT_pass[32];     //null terminated string for the SSID
 } __attribute__((__packed__));
 
 struct SystemSettings {
@@ -156,9 +145,6 @@ struct SystemSettings {
 };
 
 class SerialConsole;
-class CANManager;
-class LAWICELHandler;
-class ELM327Emu;
 
 extern EEPROMSettings settings;
 extern SystemSettings SysSettings;
@@ -167,10 +153,18 @@ extern Preferences nvPrefs;
 
 extern SerialConsole console;
 
-extern LAWICELHandler lawicel;
-
 extern char deviceName[20];
 extern char otaHost[40];
 extern char otaFilename[100];
+
+//WiFiClient espClient;
+//PubSubClient client(espClient);
+AsyncWebServer server(80);
+String vacuumState = "idle";  // Estados: idle, cleaning, paused, returning, docked, error
+float posX = 0.0, posY = 0.0, angle = 0.0;  // Posição em cm e graus
+volatile long encoderCountA = 0, encoderCountB = 0;
+const int wheelSpeed = 128;  // PWM ~50%
+const int brushSpeed = 255;  // Escovas 100%
+int batteryLevel = 100;  // Nível da bateria em %
 
 #endif /* CONFIG_H_ */

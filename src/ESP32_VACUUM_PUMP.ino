@@ -48,14 +48,8 @@ char otaFilename[100];
 
 uint8_t espChipRevision;
 
-
-
 WiFiManager wifiManager;
-LAWICELHandler lawicel;
-
 SerialConsole console;
-
-
 
 //initializes all the system EEPROM values. Chances are this should be broken out a bit but
 //there is only one checksum check for all of them so it's simple to do it all here.
@@ -67,12 +61,9 @@ void loadSettings()
 
     nvPrefs.begin(PREF_NAME, false);
 
-    settings.useBinarySerialComm = nvPrefs.getBool("binarycomm", false);
     settings.logLevel = nvPrefs.getUChar("loglevel", 1); //info
     settings.wifiMode = nvPrefs.getUChar("wifiMode", 1); //Wifi defaults to creating an AP
     
-    settings.enableBT = nvPrefs.getBool("enable-bt", false);
-    settings.enableLawicel = nvPrefs.getBool("enableLawicel", true);
     settings.systemType = 0; //nvPrefs.getUChar("systype", (espChipRevision > 2) ? 0 : 1); //0 = A0, 1 = EVTV ESP32
 
     if (settings.systemType == 0)
@@ -114,32 +105,143 @@ void loadSettings()
     {
         strcpy(settings.WPA2Key, "23Seb10STE5aNT");
     }
-    if (nvPrefs.getString("btname", settings.btName, 32) == 0)
+
+    if (nvPrefs.getString("mqttserver", settings.MQTT_server, 64) == 0)
     {
-        strcpy(settings.btName, "ELM327-");
-        strcat(settings.btName, deviceName);
+        strcpy(settings.MQTT_server, "23Seb10STE5aNT");
     }
 
-    char buff[80];
-    for (int i = 0; i < SysSettings.numBuses; i++)
+    if (nvPrefs.getString("mqttuser", settings.MQTT_user, 64) == 0)
     {
-        sprintf(buff, "can%ispeed", i);
-        settings.canSettings[i].nomSpeed = nvPrefs.getUInt(buff, 500000);
-        sprintf(buff, "can%i_en", i);
-        settings.canSettings[i].enabled = nvPrefs.getBool(buff, (i < 2)?true:false);
-        sprintf(buff, "can%i-listenonly", i);
-        settings.canSettings[i].listenOnly = nvPrefs.getBool(buff, false);
-        sprintf(buff, "can%i-fdspeed", i);
-        settings.canSettings[i].fdSpeed = nvPrefs.getUInt(buff, 5000000);
-        sprintf(buff, "can%i-fdmode", i);
-        settings.canSettings[i].fdMode = nvPrefs.getBool(buff, false);
+        strcpy(settings.MQTT_user, "23Seb10STE5aNT");
     }
 
+    if (nvPrefs.getString("mqttpass", settings.MQTT_pass, 64) == 0)
+    {
+        strcpy(settings.MQTT_pass, "23Seb10STE5aNT");
+    }
+    
     nvPrefs.end();
 
     Logger::setLoglevel((Logger::LogLevel)settings.logLevel);
 
-    for (int rx = 0; rx < NUM_BUSES; rx++) SysSettings.lawicelBusReception[rx] = true; //default to showing messages on RX 
+}
+
+void moveForward() {
+    digitalWrite(MOTOR_A_IN1, HIGH);
+    digitalWrite(MOTOR_A_IN2, LOW);
+    digitalWrite(MOTOR_B_IN3, HIGH);
+    digitalWrite(MOTOR_B_IN4, LOW);
+    analogWrite(MOTOR_A_EN, wheelSpeed);
+    analogWrite(MOTOR_B_EN, wheelSpeed);
+}
+
+void turnRight() {
+    digitalWrite(MOTOR_A_IN1, HIGH);
+    digitalWrite(MOTOR_A_IN2, LOW);
+    digitalWrite(MOTOR_B_IN3, LOW);
+    digitalWrite(MOTOR_B_IN4, HIGH);
+    analogWrite(MOTOR_A_EN, wheelSpeed);
+    analogWrite(MOTOR_B_EN, wheelSpeed);
+}
+
+void turnLeft() {
+    digitalWrite(MOTOR_A_IN1, LOW);
+    digitalWrite(MOTOR_A_IN2, HIGH);
+    digitalWrite(MOTOR_B_IN3, HIGH);
+    digitalWrite(MOTOR_B_IN4, LOW);
+    analogWrite(MOTOR_A_EN, wheelSpeed);
+    analogWrite(MOTOR_B_EN, wheelSpeed);
+}
+
+void stopMotors() {
+    digitalWrite(MOTOR_A_IN1, LOW);
+    digitalWrite(MOTOR_A_IN2, LOW);
+    digitalWrite(MOTOR_B_IN3, LOW);
+    digitalWrite(MOTOR_B_IN4, LOW);
+    analogWrite(MOTOR_A_EN, 0);
+    analogWrite(MOTOR_B_EN, 0);
+    analogWrite(MOTOR_ESCOVAS, 0);
+}
+
+void startBrushes() {
+    analogWrite(MOTOR_ESCOVAS, brushSpeed);
+}
+
+// Medir distância com sensor ultrassônico
+float getDistance(int trigPin, int echoPin) {
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+    long duration = pulseIn(echoPin, HIGH);
+    return duration * 0.034 / 2;  // Distância em cm
+}
+
+// Medir nível da bateria (2S 18650)
+int getBatteryLevel() {
+    int adcValue = analogRead(BATTERY_PIN);  // Lê 0-4095
+    float voltage = (adcValue / 4095.0) * 3.3 * 3.0;  // Divisor 2:1
+    const float minVoltage = 6.0;  // 3.0V por célula
+    const float maxVoltage = 8.4;  // 4.2V por célula
+    int level = (voltage - minVoltage) / (maxVoltage - minVoltage) * 100;
+    if (level < 0) level = 0;
+    if (level > 100) level = 100;
+    return level;
+}
+
+// Interrupções dos encoders
+void IRAM_ATTR encoderA() {
+    if (digitalRead(ENCODER_A1) == digitalRead(ENCODER_A2)) encoderCountA++; else encoderCountA--;
+}
+
+void IRAM_ATTR encoderB() {
+    if (digitalRead(ENCODER_B1) == digitalRead(ENCODER_B2)) encoderCountB++; else encoderCountB--;
+}
+
+
+// Callback MQTT
+void callback(char* topic, byte* payload, unsigned int length) {
+    String message;
+    for (unsigned int i = 0; i < length; i++) {
+        message += (char)payload[i];
+    }
+
+    if (String(topic) == "homeassistant/vacuum/robo_aspirador/command") {
+        if (message == "start") {
+            vacuumState = "cleaning";
+            startBrushes();
+            Serial.println("Iniciando limpeza");
+        } else if (message == "stop" || message == "pause") {
+            vacuumState = "paused";
+            stopMotors();
+            Serial.println("Pausado");
+        } else if (message == "return_to_base") {
+            vacuumState = "returning";
+            stopMotors();
+            Serial.println("Retornando à base");
+            delay(5000);  // Simulação
+            vacuumState = "docked";
+        }
+    }
+}
+
+// Reconectar MQTT
+void reconnect() {
+    while (!client.connected()) {
+        Serial.print("Conectando ao MQTT...");
+        String clientId = "RoboAspirador-";
+        clientId += String(random(0xffff), HEX);
+        if (client.connect(clientId.c_str(), settings.MQTT_user, settings.MQTT_pass)) {
+            Serial.println("conectado!");
+            client.subscribe("homeassistant/vacuum/robo_aspirador/command");
+        } else {
+            Serial.print("falhou, rc=");
+            Serial.print(client.state());
+            delay(5000);
+        }
+    }
 }
 
 void setup()
@@ -149,11 +251,27 @@ void setup()
     espChipRevision = ESP.getChipRevision();
 
     Serial.begin(115200); //for production
-    //Serial.begin(115200); //for testing
+    analogReadResolution(12);  // ADC 12 bits
 
-    pinMode(MOSFET_PIN, OUTPUT);
-    digitalWrite(MOSFET_PIN, LOW);  // Inicia com Raspberry desligada
-
+    pinMode(MOTOR_A_EN, OUTPUT);
+    pinMode(MOTOR_A_IN1, OUTPUT);
+    pinMode(MOTOR_A_IN2, OUTPUT);
+    pinMode(MOTOR_B_EN, OUTPUT);
+    pinMode(MOTOR_B_IN3, OUTPUT);
+    pinMode(MOTOR_B_IN4, OUTPUT);
+    pinMode(MOTOR_ESCOVAS, OUTPUT);
+    pinMode(TRIG_FRONTAL_ESQ, OUTPUT);
+    pinMode(ECHO_FRONTAL_ESQ, INPUT);
+    pinMode(TRIG_FRONTAL_DIR, OUTPUT);
+    pinMode(ECHO_FRONTAL_DIR, INPUT);
+    pinMode(TRIG_TRASEIRO, OUTPUT);
+    pinMode(ECHO_TRASEIRO, INPUT);
+    pinMode(ENCODER_A1, INPUT_PULLUP);
+    pinMode(ENCODER_A2, INPUT_PULLUP);
+    pinMode(ENCODER_B1, INPUT_PULLUP);
+    pinMode(ENCODER_B2, INPUT_PULLUP);
+    pinMode(BATTERY_PIN, INPUT);
+   
     SysSettings.isWifiConnected = false;
 
     loadSettings();
@@ -168,14 +286,11 @@ void setup()
     Serial.print("Build number: ");
     Serial.println(CFG_BUILD_NUM);
 
-    //canManager.setup();
-
     SysSettings.lawicelMode = false;
     SysSettings.lawicelAutoPoll = false;
     SysSettings.lawicelTimestamping = false;
     SysSettings.lawicelPollCounter = 0;
     
-    //elmEmulator.setup(); -> Limpar isso do código
 }
  
 /*
@@ -210,28 +325,57 @@ void loop()
     //uint32_t temp32;    
     bool isConnected = false;
     int serialCnt;
-    uint8_t in_byte;
+    uint8_t in_byte;   
 
-    /*if (Serial)*/ isConnected = true;
+    // Medir distâncias e bateria
+    float distFrontEsq = getDistance(TRIG_FRONTAL_ESQ, ECHO_FRONTAL_ESQ);
+    float distFrontDir = getDistance(TRIG_FRONTAL_DIR, ECHO_FRONTAL_DIR);
+    float distTras = getDistance(TRIG_TRASEIRO, ECHO_TRASEIRO);
+    batteryLevel = getBatteryLevel();
 
-    if (SysSettings.lawicelPollCounter > 0) SysSettings.lawicelPollCounter--;
-    //}
+    // Calcular posição com encoders
+    const float WHEEL_CIRCUMFERENCE = 20.0;  // Tamanho Roda
+    const int PULSES_PER_REV = 20;  // Pulsos do Encoder
+    static long lastCountA = 0, lastCountB = 0;
+    float distanceA = (encoderCountA - lastCountA) * WHEEL_CIRCUMFERENCE / PULSES_PER_REV;
+    float distanceB = (encoderCountB - lastCountB) * WHEEL_CIRCUMFERENCE / PULSES_PER_REV;
+    lastCountA = encoderCountA;
+    lastCountB = encoderCountB;
+    posX += (distanceA + distanceB) / 2 * cos(angle * PI / 180);
+    posY += (distanceA + distanceB) / 2 * sin(angle * PI / 180);
+    angle += (distanceB - distanceA) / 20.0;  // 20 cm = distância entre rodas
 
-    
-    /*if (!settings.enableBT)*/ 
-    /* wifiManager.loop(); */
-
-
-
-    //If the max time has passed or the buffer is almost filled then send buffered data out
-    if (micros() - lastFlushMicros > SER_BUFF_FLUSH_INTERVAL)
-    {
+    // Lógica de limpeza
+    if (vacuumState == "cleaning") {
+        if (distFrontEsq < 10.0 || distFrontDir < 10.0) {
+            if (distFrontEsq < distFrontDir) {
+                turnRight();
+                delay(500);
+            } else {
+                turnLeft();
+                delay(500);
+            }
+        } else {
+            moveForward();
+        }
+        if (batteryLevel < 10) {
+            vacuumState = "returning";
+            stopMotors();
+            delay(5000);
+            vacuumState = "docked";
+        }
     }
 
-    serialCnt = 0;
-    while ( (Serial.available() > 0) && serialCnt < 128 ) 
-    {
-        serialCnt++;
-        in_byte = Serial.read();
-    }
+    // Publicar estado como JSON
+    String stateJson = "{\"state\":\"" + vacuumState + "\","
+    "\"battery_level\":" + String(batteryLevel) + ","
+    "\"pos_x\":" + String(posX) + ","
+    "\"pos_y\":" + String(posY) + ","
+    "\"dist_front_esq\":" + String(distFrontEsq) + ","
+    "\"dist_front_dir\":" + String(distFrontDir) + ","
+    "\"dist_tras\":" + String(distTras) + "}";
+    client.publish("homeassistant/vacuum/robo_aspirador/state", stateJson.c_str());
+
+    delay(100);
+
 }

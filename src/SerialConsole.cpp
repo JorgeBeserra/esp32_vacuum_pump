@@ -70,9 +70,6 @@ void SerialConsole::printMenu()
     Logger::console("LOGLEVEL=%i - set log level (0=debug, 1=info, 2=warn, 3=error, 4=off)", settings.logLevel);
     Serial.println();
 
-    Logger::console("LAWICEL=%i - Set whether to accept LAWICEL commands (0 = Off, 1 = On)", settings.enableLawicel);
-    Serial.println();
-
     Logger::console("WIFIMODE=%i - Set mode for WiFi (0 = Wifi Off, 1 = Connect to AP, 2 = Create AP", settings.wifiMode);
     Logger::console("SSID=%s - Set SSID to either connect to or create", (char *)settings.SSID);
     Logger::console("WPA2KEY=%s - Either passphrase or actual key", (char *)settings.WPA2Key);
@@ -100,8 +97,6 @@ void SerialConsole::handleConsoleCmd()
             boolean equalSign = false;
             for (int i = 0; i < ptrBuffer; i++) if (cmdBuffer[i] == '=') equalSign = true;
             cmdBuffer[ptrBuffer] = 0; //make sure to null terminate
-            if (equalSign) handleConfigCmd();
-            else if (settings.enableLawicel) lawicel.handleLongCmd(cmdBuffer);
         }
         ptrBuffer = 0; //reset line counter once the line has been processed
     }
@@ -134,7 +129,6 @@ void SerialConsole::handleShortCmd()
         Serial.println("Normal mode");
         break;    
     default:
-        if (settings.enableLawicel) lawicel.handleShortCmd(cmdBuffer[0]);
         break;
     }
 }
@@ -215,60 +209,17 @@ void SerialConsole::handleConfigCmd()
     }
     if (writeEEPROM) {
         nvPrefs.begin(PREF_NAME, false);
-
-        char buff[80];
-        nvPrefs.putBool("enable-bt", settings.enableBT);
-        nvPrefs.putBool("enableLawicel", settings.enableLawicel);
         nvPrefs.putUChar("loglevel", settings.logLevel);
         nvPrefs.putUChar("systype", settings.systemType);
         nvPrefs.putUChar("wifiMode", settings.wifiMode);
         nvPrefs.putString("SSID", settings.SSID);
         nvPrefs.putString("wpa2Key", settings.WPA2Key);
-        nvPrefs.putString("btname", settings.btName);
+        nvPrefs.putString("mqttserver", settings.MQTT_server);
+        nvPrefs.putString("mqttuser", settings.MQTT_user);
+        nvPrefs.putString("mqttpass", settings.MQTT_pass);
         nvPrefs.end();
     }
 } 
-
-//CAN0FILTER%i=%%i,%%i,%%i,%%i (ID, Mask, Extended, Enabled)", i);
-bool SerialConsole::handleFilterSet(uint8_t bus, uint8_t filter, char *values)
-{
-    if (filter < 0 || filter > 7) return false;
-    if (bus < 0 || bus > 1) return false;
-
-    //there should be four tokens
-    char *idTok = strtok(values, ",");
-    char *maskTok = strtok(NULL, ",");
-    char *extTok = strtok(NULL, ",");
-    char *enTok = strtok(NULL, ",");
-
-    if (!idTok) return false; //if any of them were null then something was wrong. Abort.
-    if (!maskTok) return false;
-    if (!extTok) return false;
-    if (!enTok) return false;
-
-    int idVal = strtol(idTok, NULL, 0);
-    int maskVal = strtol(maskTok, NULL, 0);
-    int extVal = strtol(extTok, NULL, 0);
-    int enVal = strtol(enTok, NULL, 0);
-
-    Logger::console("Setting CAN%iFILTER%i to ID 0x%x Mask 0x%x Extended %i Enabled %i", bus, filter, idVal, maskVal, extVal, enVal);
-
-    if (bus == 0) {
-        //settings.CAN0Filters[filter].id = idVal;
-        //settings.CAN0Filters[filter].mask = maskVal;
-        //settings.CAN0Filters[filter].extended = extVal;
-        //settings.CAN0Filters[filter].enabled = enVal;
-        //CAN0.setRXFilter(filter, idVal, maskVal, extVal);
-    } else if (bus == 1) {
-        //settings.CAN1Filters[filter].id = idVal;
-        //settings.CAN1Filters[filter].mask = maskVal;
-        //settings.CAN1Filters[filter].extended = extVal;
-        //settings.CAN1Filters[filter].enabled = enVal;
-        //CAN1.setRXFilter(filter, idVal, maskVal, extVal);
-    }
-
-    return true;
-}
 
 void SerialConsole::printBusName(int bus) {
     switch (bus) {
