@@ -162,7 +162,7 @@ void setup()
     
     Serial.println("");
     Serial.println("===================================");
-    Serial.println("        MrDIY.ca CAN Shield        ");
+    Serial.println("        Sabidos Vacuum Pump        ");
     Serial.println("===================================");
     Serial.println("");
     Serial.print("Build number: ");

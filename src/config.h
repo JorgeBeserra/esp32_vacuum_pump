@@ -79,6 +79,23 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define TIMEOUT_WARNING 10000  // 1 minuto sem atividade CAN para enviar o aviso -> Temporario em 30 segundos
 #define TIMEOUT_SHUTDOWN 30000 // 5 minutos para desligamento total -> Temporario em 1 minuto
 
+// Pinos dos motores
+#define MOTOR_A_EN 19  // Roda esquerda PWM
+#define MOTOR_A_IN1 22
+#define MOTOR_A_IN2 23
+#define MOTOR_B_EN 20  // Roda direita PWM
+#define MOTOR_B_IN3 24
+#define MOTOR_B_IN4 25
+#define MOTOR_ESCOVAS 26  // Escovas PWM
+
+// Pinos dos sensores ultrassônicos
+#define TRIG_FRONTAL_ESQ 5
+#define ECHO_FRONTAL_ESQ 18
+#define TRIG_FRONTAL_DIR 6
+#define ECHO_FRONTAL_DIR 19
+#define TRIG_TRASEIRO 7
+#define ECHO_TRASEIRO 21
+
 //How many devices to allow to connect to our WiFi telnet port?
 #define MAX_CLIENTS 1
 
