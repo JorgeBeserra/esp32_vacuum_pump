@@ -1,0 +1,11 @@
+{
+    "wifi": {
+        "ssid": "HomeNetwork",
+        "password": "securePassword"
+    },
+    "mqtt": {
+        "server": "192.168.1.100",
+        "port": 1883,
+        "client_id": "VacuumRobot01"
+    }
+}
