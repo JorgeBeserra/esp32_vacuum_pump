@@ -7,6 +7,9 @@
 #define MOTOR2_PWM      14
 #define MOTOR2_IN3      12
 #define MOTOR2_IN4      13
+// Canais PWM
+#define MOTOR_LEFT_CHANNEL   0
+#define MOTOR_RIGHT_CHANNEL  1
 
 #define TRIGGER_FRONT1  5
 #define ECHO_FRONT1     18
@@ -21,9 +24,9 @@
 #define MIN_BATTERY_LEVEL   3.3 // volts
 
 // WiFi
-const char* WIFI_SSID = "YOUR_SSID";
-const char* WIFI_PASS = "YOUR_PASSWORD";
+extern const char* WIFI_SSID;
+extern const char* WIFI_PASS;
 
 // MQTT
-const char* MQTT_BROKER = "homeassistant.local";
-const int MQTT_PORT = 1883;
+extern const char* MQTT_BROKER;
+extern const int MQTT_PORT;
